@@ -1,0 +1,275 @@
+{
+  "name": "Atividade I2A2",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "05375a57-c87b-405e-a0c2-cf756b1532a7",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -100,
+        500
+      ],
+      "id": "a1b41f9a-6929-45b9-b332-75864e4a7ab3",
+      "name": "Webhook",
+      "webhookId": "05375a57-c87b-405e-a0c2-cf756b1532a7"
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.4,
+      "position": [
+        1640,
+        500
+      ],
+      "id": "3878a272-0e66-48e8-9795-e4a248e16725",
+      "name": "Respond to Webhook"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "fb0f0eef-db7b-48bd-8043-2ef01523b667",
+              "name": "ChatInput",
+              "value": "={{ $json.body.message }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        200,
+        500
+      ],
+      "id": "a796781d-f853-44d9-a056-c1f6d3021da7",
+      "name": "Edit Fields"
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-1.5-flash",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        440,
+        680
+      ],
+      "id": "bdc2c865-5b4f-4bb9-af05-681422e08a08",
+      "name": "Google Gemini Chat Model1",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "3xyQ9iwMtXYzXJ3H",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=You are an SQL assistant for PostgreSQL.\n\nYour task is to convert questions written in Portuguese into valid and efficient SQL queries for a database with two related tables: `nfs_cabecalho` and `nfs_itens`.\n\n- `nfs_cabecalho` contains the main information for each invoice.\n- `nfs_itens` contains the specific products for each invoice.\n- The tables are linked by the \"CHAVE DE ACESSO\" column.\n\nThese are the table schemas:\n\n**Table 1: `nfs_cabecalho`**\n\"CHAVE DE ACESSO\" (Primary Key), \"MODELO\", \"SÉRIE\", \"NÚMERO\", \"NATUREZA DA OPERAÇÃO\", \"DATA EMISSÃO\", \"CPF/CNPJ Emitente\", \"RAZÃO SOCIAL EMITENTE\", \"INSCRIÇÃO ESTADUAL EMITENTE\", \"UF EMITENTE\", \"MUNICÍPIO EMITENTE\", \"CNPJ DESTINATÁRIO\", \"NOME DESTINATÁRIO\", \"UF DESTINATÁRIO\", \"INDICADOR IE DESTINATÁRIO\", \"DESTINO DA OPERAÇÃO\", \"CONSUMIDOR FINAL\", \"PRESENÇA DO COMPRADOR\", \"EVENTO MAIS RECENTE\", \"DATA/HORA EVENTO MAIS RECENTE\", \"VALOR NOTA FISCAL\"\n\n**Table 2: `nfs_itens`**\n\"ID_ITEM\" (Primary Key), \"CHAVE DE ACESSO\" (Foreign Key), \"NÚMERO DO ITEM\", \"DESCRIÇÃO DO PRODUTO/SERVIÇO\", \"CÓDIGO NCM/SH\", \"TIPO DE PRODUTO\", \"CFOP\", \"QUANTIDADE\", \"UNIDADE\", \"VALOR UNITÁRIO\", \"VALOR TOTAL\"\n\n🧠 **Semantic mapping:**\n- \"nota fiscal\", \"nota\", \"NF\" → refers to unique invoices identified by `\"CHAVE DE ACESSO\"` in the `nfs_cabecalho` table.\n- \"valor da nota\", \"valor total da nota fiscal\" → refers to `\"VALOR NOTA FISCAL\"` in the `nfs_cabecalho` table.\n- \"produto\", \"item\" → refers to `\"DESCRIÇÃO DO PRODUTO/SERVIÇO\"` in the `nfs_itens` table.\n\n🔁 **Important logic:**\n- **Calculations on Text Columns**: When performing mathematical calculations (`SUM`, `AVG`, `MAX`) on currency columns like `\"VALOR NOTA FISCAL\"`, `\"VALOR TOTAL\"`, or `\"VALOR UNITÁRIO\"`, you **MUST** first convert them from text to a number. Use this exact PostgreSQL pattern: `CAST(REPLACE(REPLACE(column_name, '.', ''), ',', '.') AS NUMERIC)`.\n- **Finding the SINGLE Top/Bottom Result**: When the user asks for the *single best or worst* result (e.g., \"qual o maior\", \"quem vendeu mais\"), you **MUST** use `LIMIT 1`. For the top supplier, use this template:\n  `SELECT \"RAZÃO SOCIAL EMITENTE\", SUM(CAST(REPLACE(REPLACE(\"VALOR NOTA FISCAL\", '.', ''), ',', '.') AS NUMERIC)) AS total_valor FROM nfs_cabecalho GROUP BY \"RAZÃO SOCIAL EMITENTE\" ORDER BY total_valor DESC LIMIT 1`\n- **Handling Lists and Specific Counts (LIMIT)**: If the user asks for multiple items (e.g., \"quais são os fornecedores\", \"top 5 produtos\"), you **MUST** use a `LIMIT` clause. If a number is mentioned (\"5 primeiros\", \"top 10\"), use that number (e.g., `LIMIT 5`). If no number is mentioned for a plural request, `LIMIT 5` is a sensible default. This rule takes priority over the `LIMIT 1` rule unless the user explicitly asks for a single result.\n- **Joins**: To connect information from both tables, you **MUST** use an `INNER JOIN`: `FROM nfs_cabecalho JOIN nfs_itens ON nfs_cabecalho.\"CHAVE DE ACESSO\" = nfs_itens.\"CHAVE DE ACESSO\"`\n- **Counting**: When counting unique invoices (\"notas fiscais\"), always use: `COUNT(DISTINCT nfs_cabecalho.\"CHAVE DE ACESSO\")`\n- Every SQL statement **must start with SELECT** — never omit it.\n- Only return one single SQL query per answer.\n\n⚠️ **Strict instructions:**\n- You **must** use `JOIN`s when the user's question requires columns from both tables (e.g., finding the name of the recipient (`\"NOME DESTINATÁRIO\"`) for a specific product (`\"DESCRIÇÃO DO PRODUTO/SERVIÇO\"`)).\n- Use **only the columns listed above**. Do not invent or assume columns.\n- Do not include SQL comments (e.g. `-- ...`).\n- Do not use Markdown formatting (e.g. triple backticks).\n- Respond with **only the SQL query**, clean and ready to execute — no explanations.\n\nUser question (in Portuguese):\n{{ $json.ChatInput }}",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        460,
+        500
+      ],
+      "id": "29400dd9-b474-4dc6-9797-85ae44430365",
+      "name": "Gera query SQL"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "{{ $json.text }}",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        860,
+        500
+      ],
+      "id": "e98d1b14-f766-4600-bf62-1b4f5fb6c98b",
+      "name": "Postgres",
+      "credentials": {
+        "postgres": {
+          "id": "3kXvQSsLeNYm4a5T",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Você é um assistente especializado em comunicação clara e natural com usuários de sistemas de análise de dados.\n\nSua tarefa é gerar uma resposta textual objetiva e amigável com base em:\n\n1. A pergunta feita pelo usuário\n2. O resultado exato da consulta, que pode conter números, nomes ou ambos\n\n---\n\nPergunta do usuário: {{ $('Edit Fields').item.json.ChatInput }}\n\nResultado da consulta (formato JSON): {{ JSON.stringify($items()) }}\n\n---\n\n🔒 Regras obrigatórias para gerar a resposta:\n\n- Responda diretamente à pergunta com base **somente** nos dados fornecidos.\n- **Nunca invente informações** ou faça suposições.\n- Se o resultado tiver múltiplos campos (ex: nome da empresa e valor), use ambos corretamente na resposta.\n- Sempre formate os números corretamente:\n\n  - Para valores monetários, use `\"R$\"` com **duas casas decimais** e separador de milhar  \n    Ex: `R$ 18.952.517,61`\n\n  - Para contagens inteiras, use separador de milhar  \n    Ex: `Foram emitidas 1.250 notas fiscais`\n\n- Se o valor for zero, diga isso claramente  \n  Ex: `\"Nenhuma nota foi registrada nesse período.\"`\n\n- Se o resultado tiver um nome (ex: de empresa ou produto), inclua ele naturalmente na resposta, sem aspas\n\n---\n\n🎯 Exemplos:\n\n- Pergunta: \"Qual empresa mais vendeu?\"  \n  Resultado:  \n  `{ \"razao_social_emitente\": \"EDITORA FTD S.A.\", \"total_vendas\": 12294992.01 }`  \n  Resposta: A empresa que mais vendeu foi EDITORA FTD S.A., com um total de R$ 12.294.992,01 em vendas.\n\n- Pergunta: \"Qual o valor total das notas emitidas?\"  \n  Resultado: `153200.75`  \n  Resposta: O valor total das notas emitidas foi de R$ 153.200,75.\n\n- Pergunta: \"Quantas notas foram emitidas?\"  \n  Resultado: `0`  \n  Resposta: Nenhuma nota fiscal foi emitida no período analisado.\n\n- Pergunta: \"Qual o número da nota com maior valor?\"  \n  Resultado: `982145`  \n  Resposta: A nota fiscal com o maior valor tem o número 982145.\n\n---\n\n✳️ Sua resposta final deve ser apenas o texto, com clareza, precisão e formatação correta.  \nNão use prefixos, markdown ou explicações adicionais.\n",
+        "batching": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.chainLlm",
+      "typeVersion": 1.7,
+      "position": [
+        1080,
+        500
+      ],
+      "id": "3734099b-5c21-45f0-b434-323d1cfe374e",
+      "name": "Basic LLM Chain",
+      "executeOnce": true
+    },
+    {
+      "parameters": {
+        "modelName": "models/gemini-1.5-flash-002",
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1,
+      "position": [
+        1040,
+        680
+      ],
+      "id": "32487d1d-bea9-449c-be4b-29368c46bf11",
+      "name": "Google Gemini Chat Model3",
+      "credentials": {
+        "googlePalmApi": {
+          "id": "3xyQ9iwMtXYzXJ3H",
+          "name": "Google Gemini(PaLM) Api account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "bfbc96a5-31fd-4083-98f3-391b1b49e966",
+              "name": "response",
+              "value": "={{ $json.text }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        500
+      ],
+      "id": "fee6d213-cb0c-481e-901c-92f1df8084ea",
+      "name": "Edit Fields1"
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields": {
+      "main": [
+        [
+          {
+            "node": "Gera query SQL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model1": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Gera query SQL",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gera query SQL": {
+      "main": [
+        [
+          {
+            "node": "Postgres",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Postgres": {
+      "main": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model3": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Basic LLM Chain",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Basic LLM Chain": {
+      "main": [
+        [
+          {
+            "node": "Edit Fields1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Edit Fields1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "a18a6773-8cea-4d0b-b877-97694c6ad17e",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "57ffa9cf3625ba97a9244c02cd278c9ee8afdfdf8282501f3075b5859a6febf8"
+  },
+  "id": "poiA6r8cFsJj6Dbn",
+  "tags": []
+}

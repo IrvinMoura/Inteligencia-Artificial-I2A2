@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Atividade I2A2</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            background-color: #f4f4f4;
+            margin: 0;
+        }
+        .chat-container {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 90%;
+            max-width: 500px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        .chat-messages {
+            flex-grow: 1;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 400px; /* Limit height of chat messages */
+            border-bottom: 1px solid #eee;
+        }
+        .message {
+            margin-bottom: 10px;
+            padding: 8px 12px;
+            border-radius: 5px;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #dcf8c6;
+            align-self: flex-end;
+            margin-left: auto;
+            max-width: 80%;
+        }
+        .bot-message {
+            background-color: #e0e0e0;
+            align-self: flex-start;
+            margin-right: auto;
+            max-width: 80%;
+        }
+        .chat-input {
+            display: flex;
+            padding: 15px;
+            border-top: 1px solid #eee;
+        }
+        .chat-input input {
+            flex-grow: 1;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            margin-right: 10px;
+            font-size: 16px;
+        }
+        .chat-input button {
+            padding: 10px 15px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: background-color 0.3s ease;
+        }
+        .chat-input button:hover {
+            background-color: #0056b3;
+        }
+        .error-message {
+            color: red;
+            margin-top: 10px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-messages" id="chatMessages">
+            </div>
+        <div class="chat-input">
+            <input type="text" id="messageInput" placeholder="Digite sua mensagem...">
+            <button id="sendButton">Enviar</button>
+        </div>
+        <div id="errorMessage" class="error-message"></div>
+    </div>
+
+    <script>
+        const messageInput = document.getElementById('messageInput');
+        const sendButton = document.getElementById('sendButton');
+        const chatMessages = document.getElementById('chatMessages');
+        const errorMessageDiv = document.getElementById('errorMessage');
+
+        const WEBHOOK_URL = 'http://localhost:5678/webhook/05375a57-c87b-405e-a0c2-cf756b1532a7';
+
+        // Função para exibir uma mensagem no chat
+        function displayMessage(message, sender) {
+            const messageDiv = document.createElement('div');
+            messageDiv.classList.add('message');
+            messageDiv.classList.add(sender === 'user' ? 'user-message' : 'bot-message');
+            // Se a mensagem for um objeto (como um JSON parseado), converta-o para string para exibição
+            messageDiv.textContent = typeof message === 'object' ? JSON.stringify(message, null, 2) : message;
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight; // Rola automaticamente para a última mensagem
+        }
+
+        // Função para enviar uma mensagem
+        async function sendMessage() {
+            const message = messageInput.value.trim();
+            if (message === '') return;
+
+            displayMessage(message, 'user');
+            messageInput.value = ''; // Limpa o campo de entrada
+
+            errorMessageDiv.textContent = ''; // Limpa mensagens de erro anteriores
+
+            try {
+                const response = await fetch(WEBHOOK_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message }), // Envia a mensagem como JSON
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Erro HTTP! Status: ${response.status}`);
+                }
+
+                const data = await response.json(); // Analisa a resposta JSON do n8n
+
+                // --- TRATAMENTO DA RESPOSTA DO WEBHOOK N8N ---
+                // Aqui adicionamos a lógica para exibir a resposta do N8N
+                if (data && typeof data === 'object') {
+                    // Verifique se o n8n retorna uma chave específica, como 'response' ou 'message'
+                    // Ajuste 'response' para a chave real que seu webhook do n8n retorna para a mensagem do chat.
+                    // Por exemplo, se o n8n retornar { "respostaDoBot": "Olá!" }, use data.respostaDoBot
+                    if (data.hasOwnProperty('response') && typeof data.response === 'string') {
+                        displayMessage(data.response, 'bot');
+                    } else if (data.hasOwnProperty('message') && typeof data.message === 'string') {
+                        displayMessage(data.message, 'bot');
+                    } else {
+                        // Se nenhuma chave de mensagem de chat específica for encontrada, exiba uma mensagem genérica ou o JSON completo
+                        displayMessage(JSON.stringify(data, null, 2), 'bot');
+                    }
+                } else {
+                    // Se a resposta não for um objeto (por exemplo, texto simples), exiba-a diretamente
+                    displayMessage(data, 'bot');
+                }
+                // --- FIM DO TRATAMENTO ---
+
+            } catch (error) {
+                console.error('Erro ao enviar mensagem:', error);
+                errorMessageDiv.textContent = `Erro: Não foi possível conectar ao servidor ou resposta inválida. ${error.message}`;
+                displayMessage("Desculpe, não consegui obter uma resposta do servidor.", 'bot');
+            }
+        }
+
+        // Listeners de eventos
+        sendButton.addEventListener('click', sendMessage);
+        messageInput.addEventListener('keypress', (event) => {
+            if (event.key === 'Enter') {
+                sendMessage();
+            }
+        });
+    </script>
+</body>
+</html>
